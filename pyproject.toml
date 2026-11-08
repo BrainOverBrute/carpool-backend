@@ -1,0 +1,23 @@
+[project]
+name = "bits-carpool-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Vaibhav", email = "f20250713@goa.bits-pilani.ac.in" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.162.2",
+    "psycopg2-binary>=2.9.13",
+    "pydantic>=2.14.3",
+    "sqlalchemy>=2.1.8",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+bits-carpool-backend = "bits_carpool_backend:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
