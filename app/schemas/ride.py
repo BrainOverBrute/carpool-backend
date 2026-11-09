@@ -9,6 +9,6 @@ class PoolCreate(BaseModel):
     expected_luggage: int = Field(..., ge=0, le=4, description="Number of large bags for the trunk")
 
 class PoolResponse(BaseModel):
-    ride_id: int
+    ride_id: str
     status: str
     message: str
