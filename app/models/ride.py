@@ -23,6 +23,9 @@ class User(Base):
 
 class Ride(Base):
     __tablename__ = "rides"
+    __table_args__ = (
+        CheckConstraint("total_accommodation BETWEEN 1 AND 8", name="ck_accommodation"),
+    )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
     ride_owner = Column(String, ForeignKey("users.id"))
@@ -37,6 +40,7 @@ class Ride(Base):
     is_deleted = Column(Boolean, default=False)
     driver_name = Column(String, nullable=True)
     driver_number = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=now)
 
     owner = relationship("User", back_populates="rides_owned")
     members = relationship("RideMember", back_populates="ride")
@@ -44,6 +48,9 @@ class Ride(Base):
 
 class RideMember(Base):
     __tablename__ = "ride_members"
+    __table_args__ = (
+        UniqueConstraint("ride_id", "user_id", name="uq_ride_user"),
+    )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
     ride_id = Column(String, ForeignKey("rides.id"))
