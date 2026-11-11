@@ -1,6 +1,6 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
+from datetime import datetime, timezone
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, UniqueConstraint, CheckConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -40,7 +40,7 @@ class Ride(Base):
     is_deleted = Column(Boolean, default=False)
     driver_name = Column(String, nullable=True)
     driver_number = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=now)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     owner = relationship("User", back_populates="rides_owned")
     members = relationship("RideMember", back_populates="ride")
