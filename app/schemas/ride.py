@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 
 class PoolCreate(BaseModel):
+    ride_owner: str = Field(..., description="UUID of user creating the cab pool")
     origin: str = Field(..., description="Starting location (e.g., Dabolim)")
     destination: str = Field(..., description="Ending location (e.g., Campus)")
     expected_arrival_time: datetime = Field(..., description="Target arrival time")
