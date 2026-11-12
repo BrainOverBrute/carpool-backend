@@ -6,9 +6,9 @@ def seed_database():
     db = session()
     try:
         dummy_user = User(
-            first_name="Shreesha",
-            last_name="Rao",
-            email="shreesha@goa.bits-pilani.ac.in",
+            first_name="Palak",
+            last_name="Sharma",
+            email="palak43@goa.bits-pilani.ac.in",
             contact="9876543210"
         )
         db.add(dummy_user)
