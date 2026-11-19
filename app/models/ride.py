@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, UniqueConstraint, CheckConstraint
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
 
@@ -24,15 +23,15 @@ class User(Base):
 class Ride(Base):
     __tablename__ = "rides"
     __table_args__ = (
-        CheckConstraint("total_accommodation BETWEEN 1 AND 8", name="ck_accommodation"),
+        CheckConstraint("total_accommodation BETWEEN 3 AND 8", name="ck_accommodation"),
     )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
-    ride_owner = Column(String, ForeignKey("users.id"))
-    origin = Column(String)
-    destination = Column(String)
-    expected_arrival_time = Column(DateTime)
-    total_accommodation = Column(Integer)
+    ride_owner = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    origin = Column(String, nullable=False)
+    destination = Column(String, nullable=False)
+    expected_arrival_time = Column(DateTime(timezone=True), nullable=False)
+    total_accommodation = Column(Integer, nullable=False)
     total_ride_fare = Column(Integer, nullable=True)
     expected_luggage = Column(Integer, default=0)
     is_ticketed = Column(Boolean, default=False)
@@ -40,7 +39,7 @@ class Ride(Base):
     is_deleted = Column(Boolean, default=False)
     driver_name = Column(String, nullable=True)
     driver_number = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="rides_owned")
     members = relationship("RideMember", back_populates="ride")
@@ -53,9 +52,9 @@ class RideMember(Base):
     )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
-    ride_id = Column(String, ForeignKey("rides.id"))
-    user_id = Column(String, ForeignKey("users.id"))
-    joined_at = Column(DateTime, default=datetime.utcnow)
+    ride_id = Column(String, ForeignKey("rides.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    joined_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     role = Column(String)
     luggage_brought = Column(Integer, default=0)
