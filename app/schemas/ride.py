@@ -12,3 +12,6 @@ class PoolResponse(BaseModel):
     ride_id: str
     status: str
     message: str
+
+class JoinRequest(BaseModel):
+    expected_luggage: int = Field(..., ge=0, le=4)
