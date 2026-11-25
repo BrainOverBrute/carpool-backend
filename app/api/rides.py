@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
 from app.models.ride import Ride, User, RideMember
 
-from app.schemas.ride import PoolCreate,PoolResponse,JoinRequest
+from app.schemas.ride import PoolCreate, PoolResponse, JoinRequest, RideListItem, RideListResponse
 
 from app.auth import get_current_user
 
@@ -234,3 +234,71 @@ def join_pool(ride_id: str,
             "total_luggage": current_luggage + payload.expected_luggage
         }
     }
+
+@router.get("/", response_model = RideListResponse)
+def list_rides(
+    origin: str | None = Query(default=None, description="Filter by origin"),
+    destination: str | None = Query(default=None, description="Filter by destination"),
+    target_time: AwareDatetime | None = Query(default=None, description="Target arrival time (±4h window)"),
+    hide_full: bool = Query(default=True, description="Hide rides with 0 available seats"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_time = datetime.now(timezone.utc)
+    member_count_expr = func.count(RideMember.id)
+
+    query = (
+        db.query(
+            Ride,
+            member_count_expr.label("member_count"),
+        )
+        .outerjoin(RideMember, Ride.id == RideMember.ride_id)
+        .filter(
+            Ride.status == "active",
+            Ride.is_deleted.is_(False),
+            Ride.expected_arrival_time > current_time,
+        )
+    ) 
+
+    if origin:
+        query = query.filter(Ride.origin.ilike(f"%{origin.strip()}%"))
+
+    if destination:
+        query = query.filter(Ride.destination.ilike(f"%{destination.strip()}%"))
+
+    if target_time:
+        window_start = target_time - timedelta(hours=4)
+        window_end = target_time + timedelta(hours=4)
+        query = query.filter(
+            Ride.expected_arrival_time >= window_start,
+            Ride.expected_arrival_time <= window_end,
+        )
+
+    query = query.group_by(Ride.id)
+
+    if hide_full:
+        query = query.having(Ride.total_accommodation - member_count_expr > 0)
+
+    rows = query.order_by(Ride.expected_arrival_time.asc()).all()
+
+    results = []
+
+    for ride, member_count in rows:
+        available_seats = ride.total_accommodation - member_count
+        item = RideListItem(
+            id = ride.id,
+            origin = ride.origin,
+            destination = ride.destination,
+            expected_arrival_time = ride.expected_arrival_time,
+            total_accommodation = ride.total_accommodation,
+            available_seats = max(0, available_seats),
+            expected_luggage = ride.expected_luggage,
+            total_ride_fare = ride.total_ride_fare,
+            is_ticketed = ride.is_ticketed,
+        )
+        results.append(item)
+
+    return RideListResponse(
+        total=len(results),
+        rides=results,
+    )
