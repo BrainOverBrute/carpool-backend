@@ -49,11 +49,20 @@ def create_pool(
             detail="One of the endpoints must be Campus"
         )
 
+    current_time = datetime.now(timezone.utc)
+
+    # Validation on expected_arrival_time
+
+    if payload.expected_arrival_time < current_time + timedelta(minutes=30):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="INVALID_ARRIVAL_TIME"
+        )
+
     # Do not allow a second ride within a time period for same user
 
     window_start = payload.expected_arrival_time - timedelta(hours=24)
     window_end = payload.expected_arrival_time + timedelta(hours=24)
-    current_time = datetime.now(timezone.utc)
 
     # 1. Query the database for the user's upcoming active rides
     # We join the Ride and RideMember tables to find rides this specific user is part of.
