@@ -5,7 +5,7 @@ from sqlalchemy import func
 from app.database import get_db
 from app.models.ride import Ride, User, RideMember
 
-from app.schemas.ride import PoolCreate, PoolResponse, JoinRequest, RideListItem, RideListResponse
+from app.schemas.ride import PoolCreate, PoolResponse, JoinRequest, RideListItem, RideListResponse, MembershipActionRequest, MembershipActionResponse
 
 from app.auth import get_current_user
 
@@ -345,4 +345,99 @@ def list_rides(
     return RideListResponse(
         total=len(results),
         rides=results,
+    )
+
+@router.put("/{ride_id}/membership", response_model = MembershipActionResponse)
+def update_membership(
+    ride_id: str,
+    payload: MembershipActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # 1. Fetch and row-lock the active ride
+    ride = (
+        db.query(Ride)
+        .filter(
+            Ride.id == ride_id,
+            Ride.status == "active",
+            Ride.is_deleted.is_(False),
+        )
+        .with_for_update()
+        .first()
+    )
+    if not ride:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active ride not found")
+
+    removed_user_id: str | None = None
+
+    # 2. Handle the 3 actions: "cancel", "kick", "leave"
+    if payload.action == "cancel":
+        if current_user.id == ride.ride_owner:
+            ride.status = "cancelled"
+            ride.is_deleted = True
+            ride.expected_luggage = 0
+
+            db.query(RideMember).filter(RideMember.ride_id == ride.id).delete()
+        else:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Can not cancel a ride unless you're the owner")
+
+    elif payload.action == "kick":
+        # TODO: Verify current_user.id == ride.ride_owner (else 403)
+        if current_user.id == ride.ride_owner:
+            if not payload.user_id:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="No user id found to kick")
+            if payload.user_id==current_user.id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can not kick yourself")
+
+            member = db.query(RideMember).filter(RideMember.ride_id == ride.id,RideMember.user_id == payload.user_id).first()
+
+            if not member:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target user is not a member of this ride")
+
+            ride.expected_luggage = max(0, ride.expected_luggage - member.luggage_brought)
+            db.delete(member)
+            removed_user_id = payload.user_id
+        else:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Can not kick someone unless you're the owner")
+
+    elif payload.action == "leave":
+        # TODO: Find current_user's RideMember row (else 404), subtract luggage_brought, delete row
+        member = db.query(RideMember).filter(RideMember.ride_id == ride.id, RideMember.user_id == current_user.id).first()
+        if not member:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="You are not a member of this ride",
+            )
+
+        ride.expected_luggage = max(0, ride.expected_luggage - member.luggage_brought)
+        db.delete(member)
+        db.flush()
+
+        remaining_members = (
+            db.query(RideMember)
+            .filter(RideMember.ride_id == ride.id)
+            .order_by(RideMember.joined_at.asc())
+            .all()
+        )
+
+        if not remaining_members:
+            ride.is_deleted = True
+            ride.status = "cancelled"
+
+        elif current_user.id == ride.ride_owner:
+            ride.ride_owner = remaining_members[0].user_id
+            remaining_members[0].role = "owner"
+
+    # 3. Compute updated available_seats and commit
+    remaining_count = db.query(func.count(RideMember.id)).filter(RideMember.ride_id == ride.id).scalar() or 0
+    available_seats = max(0, ride.total_accommodation - remaining_count)
+
+    db.commit()
+
+    return MembershipActionResponse(
+        ride_id=ride.id,
+        action=payload.action,
+        ride_status=ride.status,
+        available_seats=available_seats,
+        removed_user_id=removed_user_id,
     )
