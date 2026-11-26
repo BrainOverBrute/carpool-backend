@@ -241,6 +241,7 @@ def list_rides(
     destination: str | None = Query(default=None, description="Filter by destination"),
     target_time: AwareDatetime | None = Query(default=None, description="Target arrival time (±4h window)"),
     hide_full: bool = Query(default=True, description="Hide rides with 0 available seats"),
+    ride_id: str | None = Query(default=None, description="Filter by a specific ride ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -274,27 +275,70 @@ def list_rides(
             Ride.expected_arrival_time <= window_end,
         )
 
+    if ride_id: query = query.filter(Ride.id == ride_id)
+
     query = query.group_by(Ride.id)
 
-    if hide_full:
+    if hide_full and not ride_id:
         query = query.having(Ride.total_accommodation - member_count_expr > 0)
 
     rows = query.order_by(Ride.expected_arrival_time.asc()).all()
 
+    ride_ids = [ride.id for ride, _ in rows]
+    members_by_ride: dict[str, list[tuple[RideMember, User]]] = {rid: [] for rid in ride_ids}
+
+    if ride_ids:
+        member_rows = (
+            db.query(RideMember, User)
+            .join(User, RideMember.user_id == User.id)
+            .filter(RideMember.ride_id.in_(ride_ids))
+            .all()
+        )
+        for member, user in member_rows:
+            members_by_ride[member.ride_id].append((member, user))
+
     results = []
 
     for ride, member_count in rows:
+        ride_members = members_by_ride[ride.id]
+        is_member = False
+
+        for member, _ in ride_members:
+            if member.user_id == current_user.id:
+                is_member = True
+                break
+
+        is_owner = ride.ride_owner == current_user.id
+
+        member_list = [
+            RideMemberInfo(
+                user_id=user.id,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                role=member.role,
+                contact=user.contact if is_member else None,
+                luggage_brought=member.luggage_brought,
+            )
+            for member, user in ride_members
+        ]
+
         available_seats = ride.total_accommodation - member_count
         item = RideListItem(
-            id = ride.id,
-            origin = ride.origin,
-            destination = ride.destination,
-            expected_arrival_time = ride.expected_arrival_time,
-            total_accommodation = ride.total_accommodation,
-            available_seats = max(0, available_seats),
-            expected_luggage = ride.expected_luggage,
-            total_ride_fare = ride.total_ride_fare,
-            is_ticketed = ride.is_ticketed,
+            id=ride.id,
+            ride_owner=ride.ride_owner,
+            origin=ride.origin,
+            destination=ride.destination,
+            expected_arrival_time=ride.expected_arrival_time,
+            total_accommodation=ride.total_accommodation,
+            available_seats=max(0, available_seats),
+            expected_luggage=ride.expected_luggage,
+            total_ride_fare=ride.total_ride_fare,
+            driver_name=ride.driver_name if is_member else None,
+            driver_number=ride.driver_number if is_member else None,
+            is_ticketed=ride.is_ticketed,
+            is_member=is_member,
+            is_owner=is_owner,
+            members=member_list,
         )
         results.append(item)
 
