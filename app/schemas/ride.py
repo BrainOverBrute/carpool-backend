@@ -1,4 +1,5 @@
 from pydantic import BaseModel, AwareDatetime, Field
+from typing import Literal
 
 class PoolCreate(BaseModel):
     origin: str = Field(..., description="Starting location (e.g., Dabolim)")
@@ -43,3 +44,15 @@ class RideListItem(BaseModel):
 class RideListResponse(BaseModel):
     total: int = Field(..., ge=0, description="Number of matching rides returned")
     rides: list[RideListItem] = Field(..., description="List of matching rides")
+
+class MembershipActionRequest(BaseModel):
+    action: Literal["leave", "kick", "cancel"] = Field(..., description="Membership action to perform")
+    user_id: str | None = Field(default=None, description="Target user ID (required only when action is 'kick')")
+
+
+class MembershipActionResponse(BaseModel):
+    ride_id: str
+    action: Literal["leave", "kick", "cancel"]
+    ride_status: str
+    available_seats: int
+    removed_user_id: str | None = None
